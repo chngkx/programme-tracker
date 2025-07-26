@@ -1,0 +1,119 @@
+// api/check-programmes.js
+import { createClient } from '@supabase/supabase-js';
+import fetch from 'node-fetch';
+
+// Configure these with your actual values
+const SUPABASE_URL = process.env.SUPABASE_URL || 'YOUR_SUPABASE_URL';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'YOUR_SERVICE_KEY';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+async function sendTelegramMessage(message) {
+    try {
+        const response = await fetch(
+            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: message,
+                    parse_mode: 'HTML'
+                })
+            }
+        );
+        return await response.json();
+    } catch (error) {
+        console.error('Error sending Telegram message:', error);
+        return null;
+    }
+}
+
+async function checkAndNotifyProgrammes() {
+    // Get current date in Singapore timezone
+    const now = new Date();
+    const singaporeTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Singapore"}));
+    const today = singaporeTime.toISOString().split('T')[0];
+    const currentHour = singaporeTime.getHours();
+    
+    console.log(`Checking programmes for ${today} at ${currentHour}:00 SGT`);
+    
+    // Only send notifications at 5 PM (17:00)
+    if (currentHour !== 17) {
+        return { message: `Not 5 PM yet. Current time: ${currentHour}:00 SGT` };
+    }
+    
+    try {
+        // Get programmes ending today that haven't been notified
+        const { data: programmes, error } = await supabase
+            .from('programmes')
+            .select('*')
+            .eq('end_date', today)
+            .eq('notification_sent', false);
+        
+        if (error) throw error;
+        
+        if (!programmes || programmes.length === 0) {
+            return { message: 'No programmes ending today' };
+        }
+        
+        const results = [];
+        
+        for (const programme of programmes) {
+            const message = `🔔 <b>Programme Evaluation Reminder</b>\n\n` +
+                          `Programme: <b>${programme.course_title}</b>\n` +
+                          `Trainer: ${programme.trainer_name}\n` +
+                          `Period: ${new Date(programme.start_date).toLocaleDateString()} - ${new Date(programme.end_date).toLocaleDateString()}\n\n` +
+                          `📊 This programme ended today. Please check the evaluation results and update the KPI status in your tracker.\n\n` +
+                          `👉 Mark as ✅ (KPI Met) or ❌ (KPI Not Met)`;
+            
+            const result = await sendTelegramMessage(message);
+            
+            if (result && result.ok) {
+                // Mark as notified
+                await supabase
+                    .from('programmes')
+                    .update({ notification_sent: true })
+                    .eq('id', programme.id);
+                
+                results.push({
+                    programme: programme.course_title,
+                    status: 'sent'
+                });
+            } else {
+                results.push({
+                    programme: programme.course_title,
+                    status: 'failed',
+                    error: result
+                });
+            }
+        }
+        
+        return {
+            message: `Processed ${programmes.length} programmes`,
+            results
+        };
+        
+    } catch (error) {
+        console.error('Error:', error);
+        return { error: error.message };
+    }
+}
+
+// Vercel serverless function handler
+export default async function handler(req, res) {
+    // Allow manual trigger or cron job
+    if (req.method !== 'GET' && req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+    
+    const result = await checkAndNotifyProgrammes();
+    return res.status(200).json(result);
+}
+
+// For local testing
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+    checkAndNotifyProgrammes().then(console.log);
+}

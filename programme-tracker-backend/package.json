@@ -1,0 +1,14 @@
+// package.json
+{
+  "name": "programme-tracker-backend",
+  "version": "1.0.0",
+  "description": "Backend service for programme tracker notifications",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node api/check-programmes.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "node-fetch": "^3.3.2"
+  }
+}

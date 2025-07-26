@@ -1,0 +1,14 @@
+// vercel.json
+{
+  "functions": {
+    "api/check-programmes.js": {
+      "maxDuration": 10
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/check-programmes",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
