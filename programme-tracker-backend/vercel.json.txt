@@ -1,14 +1,14 @@
-// vercel.json
 {
   "functions": {
     "api/check-programmes.js": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "runtime": "nodejs18.x"
     }
   },
-  "crons": [
+  "rewrites": [
     {
-      "path": "/api/check-programmes",
-      "schedule": "0 9 * * *"
+      "source": "/(.*)",
+      "destination": "/api/check-programmes"
     }
   ]
 }
